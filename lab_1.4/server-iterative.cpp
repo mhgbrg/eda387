@@ -38,6 +38,8 @@
 // Set VERBOSE to 1 to print additional, non-essential information.
 #define VERBOSE 1
 
+#define MAX_EVENTS 1000
+
 // If NONBLOCKING is set to 1, all sockets are put into non-blocking mode.
 // Use this for Part II, when implementing the select() based server, where
 // no blocking operations other than select() should occur. (If an blocking
@@ -102,7 +104,7 @@ static bool accept_connection(int listenfd, ConnectionData& conn);
  * required. Returns `false' to indicate that the connection is closing or
  * has closed, and the connection should not be processed further.
  */
-static bool process_client_recv( ConnectionData& cd );
+static bool process_client_recv( ConnectionData* cd );
 
 /* Send data from the connection's buffer.
  *
@@ -117,7 +119,7 @@ static bool process_client_recv( ConnectionData& cd );
  * required. Returns `false' to indicate that the connection is closing or
  * has closed, and the connection should not be processed further.
  */
-static bool process_client_send( ConnectionData& cd );
+static bool process_client_send( ConnectionData* cd );
 
 /* Places the socket identified by `fd' in non-blocking mode.
  *
@@ -196,12 +198,12 @@ int main( int argc, char* argv[] )
 					struct epoll_event conn_ev;
 					conn_ev.events = EPOLLIN;
 					conn_ev.data.ptr = &conn;
-					epoll_ctl(epollfd, EPOLL_CTL_ADD, conn.fd, &conn_ev);
+					epoll_ctl(epollfd, EPOLL_CTL_ADD, conn.sock, &conn_ev);
 				}
 			} else {
-				ConnectionData conn = (ConnectionData*) event.data.ptr;
+				ConnectionData* conn = (ConnectionData*) event.data.ptr;
 				bool still_open;
-				if (conn.state == eConnStateReceiving) {
+				if (conn->state == eConnStateReceiving) {
 					still_open = process_client_recv(conn);
 					event.events = EPOLLOUT;
 				} else {
@@ -209,9 +211,9 @@ int main( int argc, char* argv[] )
 					event.events = EPOLLIN;
 				}
 				if (!still_open) {
-					close(conn.sock);
-					conn.sock = -1;
-					epoll_ctl(epollfd, EPOLL_CTL_DEL, conn.fd, NULL);
+					close(conn->sock);
+					conn->sock = -1;
+					epoll_ctl(epollfd, EPOLL_CTL_DEL, conn->fd, NULL);
 				}
 			}
 		}
@@ -269,17 +271,17 @@ static bool accept_connection(int listenfd, ConnectionData& conn) {
 	return true;
 }
 
-static bool process_client_recv( ConnectionData& cd )
+static bool process_client_recv( ConnectionData* cd )
 {
-	assert( cd.state == eConnStateReceiving );
+	assert( cd->state == eConnStateReceiving );
 
 	// receive from socket
-	ssize_t ret = recv( cd.sock, cd.buffer, kTransferBufferSize, 0 );
+	ssize_t ret = recv( cd->sock, cd->buffer, kTransferBufferSize, 0 );
 
 	if( 0 == ret )
 	{
 #		if VERBOSE
-		printf( "  socket %d - orderly shutdown\n", cd.sock );
+		printf( "  socket %d - orderly shutdown\n", cd->sock );
 		fflush( stdout );
 #		endif
 
@@ -289,7 +291,7 @@ static bool process_client_recv( ConnectionData& cd )
 	if( -1 == ret )
 	{
 #		if VERBOSE
-		printf( "  socket %d - error on receive: '%s'\n", cd.sock,
+		printf( "  socket %d - error on receive: '%s'\n", cd->sock,
 			strerror(errno) );
 		fflush( stdout );
 #		endif
@@ -298,32 +300,32 @@ static bool process_client_recv( ConnectionData& cd )
 	}
 
 	// update connection buffer
-	cd.bufferSize += ret;
+	cd->bufferSize += ret;
 
 	// zero-terminate received data
-	cd.buffer[cd.bufferSize] = '\0';
+	cd->buffer[cd->bufferSize] = '\0';
 
 	// transition to sending state
-	cd.bufferOffset = 0;
-	cd.state = eConnStateSending;
+	cd->bufferOffset = 0;
+	cd->state = eConnStateSending;
 	return true;
 }
 
-static bool process_client_send( ConnectionData& cd )
+static bool process_client_send( ConnectionData* cd )
 {
-	assert( cd.state == eConnStateSending );
+	assert( cd->state == eConnStateSending );
 
 	// send as much data as possible from buffer
-	ssize_t ret = send( cd.sock,
-		cd.buffer+cd.bufferOffset,
-		cd.bufferSize-cd.bufferOffset,
+	ssize_t ret = send( cd->sock,
+		cd->buffer+cd->bufferOffset,
+		cd->bufferSize-cd->bufferOffset,
 		SO_NOSIGPIPE // MSG_NOSIGNAL // suppress SIGPIPE signals, generate EPIPE instead
 	);
 
 	if( -1 == ret )
 	{
 #		if VERBOSE
-		printf( "  socket %d - error on send: '%s'\n", cd.sock,
+		printf( "  socket %d - error on send: '%s'\n", cd->sock,
 			strerror(errno) );
 		fflush( stdout );
 #		endif
@@ -332,15 +334,15 @@ static bool process_client_send( ConnectionData& cd )
 	}
 
 	// update buffer data
-	cd.bufferOffset += ret;
+	cd->bufferOffset += ret;
 
 	// did we finish sending all data
-	if( cd.bufferOffset == cd.bufferSize )
+	if( cd->bufferOffset == cd->bufferSize )
 	{
 		// if so, transition to receiving state again
-		cd.bufferSize = 0;
-		cd.bufferOffset = 0;
-		cd.state = eConnStateReceiving;
+		cd->bufferSize = 0;
+		cd->bufferOffset = 0;
+		cd->state = eConnStateReceiving;
 	}
 
 	return true;
