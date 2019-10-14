@@ -1,0 +1,68 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{fullpage}
+\usepackage{amsmath}
+\usepackage{mathtools}
+\usepackage{enumerate}
+\usepackage[parfill]{parskip} % New line instead of indentation for new paragraphs.
+\usepackage{graphicx}
+\usepackage{listings} % Allows for math inside verbatim
+\usepackage{url}
+\lstset{
+  basicstyle=\ttfamily,
+  mathescape
+}
+\graphicspath{{figures/}}
+
+\title{EDA387: Computer Networks - Lab 2.3}
+\author{Mats Högberg}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section*{Self-stabilizing vertex coloring}
+
+% 1. Provide the pseudo code for a self-stabilizing algorithm for vertex coloring in a ring
+Here's the pseudo code for a self-stabilizing algorithm for vertex coloring in the given graph:
+
+\begin{lstlisting}
+  01 $i = 1$:   do forever:
+  02        $lr_n$ := read $r_n$
+  03        color$_i$ := 1 if $lr_n$ = 0 else 2
+  04        write $r_i$ := color$_i$
+  05      end
+
+  06 $i \neq 1$: do forever:
+  07        $lr_{i-1}$ := read $r_{i-1}$
+  08        color$_i$ := 0 if $lr_{i-1}$ = 1 or $lr_{i-1}$ = 2 else 1
+  09        write $r_i$ := color$_i$
+  10      end
+\end{lstlisting}
+
+In this algorithm, the root sets its color to either 1 or 2, depending on the color of node $n$. All other processors look at the processor prior to them in the ring, and set its color to 0 if the neighbour's color is 1 or 2, and 1 otherwise.
+
+% 2. Define a safe configuration with respect to the set of legal executions with respect to your proposed algorithm.
+For the task of vertex coloring, the set of legal executions are all executions in which, in every configuration, the values of registers of neighbouring processors are not equal. A configuration $c = \{r_1, r_2, \ldots, r_n\}$ is safe with regard to the set of legal executions and the above algorithm if:
+\begin{align*}
+  r_1 &= \begin{cases}
+    1, & \text{if } n \text{ mod } 2 = 0 \\
+    2, & \text{otherwise}
+  \end{cases} \\
+  \forall i, i \neq 1 : r_i &= i \text{ mod } 2
+\end{align*}
+
+For example, for $n = 5$ we would have $c = \{2, 0, 1, 0, 1\}$ and for $n = 6$ we would have $c = \{1, 0, 1, 0, 1, 0\}$. If a system is in such a configuration, the values of registers of neighbouring processors are not equal, and no register will ever change its value. It is therefore a safe configuration.
+
+% 3. Demonstrate the closure and convergence properties
+% 4. Bound the stabilization period
+To prove that the algorithm will end up in this configuration, regardless of the initial configuration of the system, we will start by taking a closer look at $p_1$. Assuming read/write atomicity, $p_1$ will write either $r_1 = 1$ or $r_1 = 2$ within 2 asynchronous rounds, depending on the value of $r_n$. After 4 rounds, $p_2$ will have read the value written to $r_1$ and written $r_2 = 0$. An important thing to note here is that $p_2$ will write $r_2 = 0$ regardless of whether $r_1 = 1$ or $r_1 = 2$. After this happens, the value of $r_2$ will never change, since the value of $r_1$ will only ever be set to either 1 or 2.
+
+After 6 rounds, $p_3$ will have read $r_2 = 0$ and written $r_3 = 1$. Once again, since the value stored in $r_2$ will never change after 4 rounds, the value of $r_3$ will never change again after this. This pattern will continue, and within $2n$ rounds we will have $\forall i, i \neq 1 : r_i = i \text{ mod } 2$, and most notably we will have $r_n = n \text{ mod } 2$. Within 2 additional rounds, $p_1$ will have read $r_n = n \text{ mod } 2$ and written $r_1 = 1$ if $r_n = 0$ or $r_1 = 2$ otherwise. At this point, the system will be in the safe configuration described above, and thus we have shown that the algorithm will stabilize within $2n+2$ rounds.
+
+% 5. Show that the algorithm uses an optimal number of colors (3 for uneven, 2 for even)
+% 6. Provide the number of states that the algorithm needs (what is this?)
+This algorithm will use 2 colors if $n \text{ mod } 2 = 0$ and 3 otherwise. This is the optimal number of colors for vertex coloring in a ring. As for the states of the processors, each processor can be in one of three states: unknown (its starting state), set to an incorrect color (which can happen before the system has stabilized), or set to its correct color (which is its color in the safe configuration).
+
+\end{document}
