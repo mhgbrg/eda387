@@ -213,7 +213,7 @@ int main( int argc, char* argv[] )
 				if (!still_open) {
 					close(conn->sock);
 					conn->sock = -1;
-					epoll_ctl(epollfd, EPOLL_CTL_DEL, conn->fd, NULL);
+					epoll_ctl(epollfd, EPOLL_CTL_DEL, conn->sock, NULL);
 				}
 			}
 		}
